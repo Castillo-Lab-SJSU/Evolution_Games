@@ -78,6 +78,21 @@
       pointer-events: none;
     }
 
+    #startOverlayButton {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 11;
+      background: white;
+      color: black;
+      border: 2px solid black;
+      padding: 12px 24px;
+      font-size: 22px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
     #nextGenOverlayButton {
       display: none;
       position: absolute;
@@ -175,7 +190,6 @@
       </select>
     </label>
 
-    <button onclick="startGame()">Start</button>
     <button onclick="resetGame()">Reset Parameters</button>
     <button id="graphButton" onclick="showGraphs()" style="display:none;">
       Show Graphs
@@ -189,6 +203,10 @@
 
   <div id="game">
     <div id="timeUpOverlay">TIME'S UP!</div>
+
+    <button id="startOverlayButton" onclick="startGame()">
+      START
+    </button>
   </div>
 
   <div id="graphs" style="display:none;">
@@ -287,9 +305,14 @@
       document.getElementById("stats").innerHTML = "";
       habitatType = document.getElementById("habitatInput").value;
       game.innerHTML = `
-    ${habitatBackgroundSVG()}
-    <div id="timeUpOverlay">TIME'S UP!</div>
-  `;
+  ${habitatBackgroundSVG()}
+
+  <div id="timeUpOverlay">TIME'S UP!</div>
+
+  <button id="startOverlayButton" onclick="startGame()">
+    START
+  </button>
+`;
     }
 
     function lockParameters() {
@@ -305,6 +328,10 @@
 
     function startGame() {
       studentId = document.getElementById("studentIdInput").value.trim();
+      const startButton = document.getElementById("startOverlayButton");
+      if (startButton) {
+        startButton.remove();
+      }
       if (studentId === "") {
         alert("Please enter your student ID before starting.");
         return;
