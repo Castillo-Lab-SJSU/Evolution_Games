@@ -198,6 +198,9 @@
   <button id="settingsButton" onclick="toggleControls()">
     Settings
   </button>
+  <button id="classSummaryButton" onclick="showClassSummaryGraphs()">
+    Class Summary Graphs
+  </button>
   <div id="timerDisplay">Time: 10</div>
   <p id="stats"></p>
 
@@ -222,7 +225,7 @@
 
     <h2>Mutation Counts</h2>
     <canvas id="mutationChart"></canvas>
-    <h2>Class Summary Graphs</h2>
+    <h2 id="classSummaryTitle">Class Summary Graphs</h2>
 
     <label>
       Summary variable:
@@ -236,6 +239,8 @@
         <option value="fast">Fast phenotype frequency</option>
         <option value="medium">Medium phenotype frequency</option>
         <option value="slow">Slow phenotype frequency</option>
+        <option value="color_relative_fitness">Color genotype relative fitness</option>
+        <option value="speed_relative_fitness">Speed genotype relative fitness</option>
       </select>
     </label>
 
@@ -971,6 +976,15 @@
       });
     }
 
+    function showClassSummaryGraphs() {
+      document.getElementById("graphs").style.display = "block";
+
+      const classSummaryTitle = document.getElementById("classSummaryTitle");
+      if (classSummaryTitle) {
+        classSummaryTitle.scrollIntoView({ behavior: "smooth" });
+      }
+    }
+
     function showGraphs() {
       document.getElementById("graphs").style.display = "block";
       charts.forEach(chart => chart.destroy());
@@ -1175,9 +1189,285 @@
         };
       });
     }
+    function survivalRate(row, survivedColumn, countColumn) {
+      const survived = Number(row[survivedColumn]);
+      const count = Number(row[countColumn]);
+
+      if (Number.isNaN(survived) || Number.isNaN(count) || count === 0) {
+        return null;
+      }
+
+      return survived / count;
+    }
+
+    function relativeFitnessRows(rows, locus) {
+      const genotypeColumns = locus === "color" ?
+        [
+          ["AA", "AA_survived", "AA_count"],
+          ["Aa", "Aa_survived", "Aa_count"],
+          ["aa", "aa_survived", "aa_count"]
+        ] :
+        [
+          ["BB", "BB_survived", "BB_count"],
+          ["Bb", "Bb_survived", "Bb_count"],
+          ["bb", "bb_survived", "bb_count"]
+        ];
+
+      const output = [];
+
+      rows.forEach(row => {
+        const rates = genotypeColumns.map(([genotype, survivedCol, countCol]) => ({
+          genotype,
+          rate: survivalRate(row, survivedCol, countCol),
+          generation: Number(row.generation),
+          simulationId: row.simulationId
+        }));
+
+        const validRates = rates
+          .map(x => x.rate)
+          .filter(x => x !== null && !Number.isNaN(x));
+
+        if (validRates.length === 0) return;
+
+        const maxRate = Math.max(...validRates);
+        if (maxRate === 0) return;
+
+        rates.forEach(x => {
+          if (x.rate === null || Number.isNaN(x.rate)) return;
+          if (Number.isNaN(x.generation)) return;
+
+          output.push({
+            simulationId: x.simulationId,
+            generation: x.generation,
+            genotype: x.genotype,
+            relativeFitness: x.rate / maxRate
+          });
+        });
+      });
+
+      return output;
+    }
+
+    function averageRelativeFitnessByGeneration(rows, locus) {
+      const fitnessRows = relativeFitnessRows(rows, locus);
+      const grouped = {};
+
+      fitnessRows.forEach(row => {
+        if (!grouped[row.genotype]) {
+          grouped[row.genotype] = {};
+        }
+
+        if (!grouped[row.genotype][row.generation]) {
+          grouped[row.genotype][row.generation] = [];
+        }
+
+        grouped[row.genotype][row.generation].push(row.relativeFitness);
+      });
+
+      const generations = [...new Set(fitnessRows.map(row => row.generation))]
+        .sort((a, b) => a - b);
+
+      const datasets = Object.keys(grouped).map(genotype => {
+        const means = [];
+        const lowerCI = [];
+        const upperCI = [];
+
+        generations.forEach(g => {
+          const values = grouped[genotype][g] || [];
+
+          if (values.length === 0) {
+            means.push(null);
+            lowerCI.push(null);
+            upperCI.push(null);
+            return;
+          }
+
+          const n = values.length;
+          const mean = values.reduce((sum, x) => sum + x, 0) / n;
+
+          const variance = n > 1
+            ? values.reduce((sum, x) => sum + Math.pow(x - mean, 2), 0) / (n - 1)
+            : 0;
+
+          const sd = Math.sqrt(variance);
+          const se = sd / Math.sqrt(n);
+          const margin = 1.96 * se;
+
+          means.push(mean);
+          lowerCI.push(mean - margin);
+          upperCI.push(mean + margin);
+        });
+
+        return {
+          genotype,
+          means,
+          lowerCI,
+          upperCI
+        };
+      });
+
+      return {
+        generations,
+        datasets
+      };
+    }
+
+    function filterRowsByStartingParameters(rows, habitatFilter, filterPopulationSize, filterAFrequency, filterBFrequency, filterHuntTime, filterSpeedMultiplier, filterMutationRate) {
+      return rows.filter(row => {
+        if (habitatFilter !== "all" && row.habitatType !== habitatFilter) return false;
+        return (
+          Number(row.startPopulationSize) === filterPopulationSize &&
+          Number(row.startAFrequency) === filterAFrequency &&
+          Number(row.startBFrequency) === filterBFrequency &&
+          Number(row.huntTime) === filterHuntTime &&
+          Number(row.speedMultiplier) === filterSpeedMultiplier &&
+          Number(row.mutationRate) === filterMutationRate
+        );
+      });
+    }
+
+    async function makeRelativeFitnessSummaryGraph(locus) {
+      const habitatFilter = document.getElementById("summaryHabitatFilter").value;
+      const filterPopulationSize = Number(document.getElementById("filterPopulationSize").value);
+      const filterAFrequency = Number(document.getElementById("filterAFrequency").value);
+      const filterBFrequency = Number(document.getElementById("filterBFrequency").value);
+      const filterHuntTime = Number(document.getElementById("filterHuntTime").value);
+      const filterSpeedMultiplier = Number(document.getElementById("filterSpeedMultiplier").value);
+      const filterMutationRate = Number(document.getElementById("filterMutationRate").value);
+
+      let rows = await fetchClassData();
+      rows = filterRowsByStartingParameters(
+        rows,
+        habitatFilter,
+        filterPopulationSize,
+        filterAFrequency,
+        filterBFrequency,
+        filterHuntTime,
+        filterSpeedMultiplier,
+        filterMutationRate
+      );
+
+      if (rows.length === 0) {
+        alert("No class data matched those starting parameters.");
+        return;
+      }
+
+      const summary = averageRelativeFitnessByGeneration(rows, locus);
+
+      if (summary.generations.length === 0 || summary.datasets.length === 0) {
+        alert("No relative fitness data could be calculated for those filters.");
+        return;
+      }
+
+      if (classSummaryChart) {
+        classSummaryChart.destroy();
+      }
+
+      const ctx = document.getElementById("classSummaryChart");
+
+      classSummaryChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: summary.generations,
+          datasets: summary.datasets.flatMap(ds => {
+            const colors = {
+              AA: "rgba(160,80,20,1)",
+              Aa: "rgba(20,140,60,1)",
+              aa: "rgba(40,80,220,1)",
+              BB: "rgba(160,80,20,1)",
+              Bb: "rgba(20,140,60,1)",
+              bb: "rgba(40,80,220,1)"
+            };
+
+            const fills = {
+              AA: "rgba(160,80,20,0.25)",
+              Aa: "rgba(20,140,60,0.25)",
+              aa: "rgba(40,80,220,0.25)",
+              BB: "rgba(160,80,20,0.25)",
+              Bb: "rgba(20,140,60,0.25)",
+              bb: "rgba(40,80,220,0.25)"
+            };
+
+            return [
+              {
+                label: `${ds.genotype} CI lower`,
+                data: ds.lowerCI,
+                fill: false,
+                tension: 0.2,
+                borderWidth: 0,
+                pointRadius: 0,
+                borderColor: "rgba(0,0,0,0)"
+              },
+              {
+                label: `${ds.genotype} CI upper`,
+                data: ds.upperCI,
+                fill: "-1",
+                tension: 0.2,
+                borderWidth: 0,
+                pointRadius: 0,
+                backgroundColor: fills[ds.genotype],
+                borderColor: "rgba(0,0,0,0)"
+              },
+              {
+                label: ds.genotype,
+                data: ds.means,
+                fill: false,
+                tension: 0.2,
+                borderWidth: 4,
+                pointRadius: 3,
+                borderColor: colors[ds.genotype]
+              }
+            ];
+          })
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            title: {
+              display: true,
+              text: `Relative fitness by generation for ${locus} genotypes: ${filterAFrequency} A allele frequency, ${filterBFrequency} B allele frequency, population ${filterPopulationSize}, hunt time ${filterHuntTime}, speed multiplier ${filterSpeedMultiplier}, mutation rate ${filterMutationRate}, habitat ${habitatFilter}`
+            },
+            legend: {
+              display: true,
+              labels: {
+                filter: item => !item.text.includes("CI")
+              }
+            }
+          },
+          scales: {
+            y: {
+              min: 0,
+              max: 1.1,
+              title: {
+                display: true,
+                text: "Relative fitness"
+              }
+            },
+            x: {
+              title: {
+                display: true,
+                text: "Generation"
+              }
+            }
+          }
+        }
+      });
+    }
+
     async function makeClassSummaryGraph() {
       //alert("Making class graph...");
       const variable = document.getElementById("summaryGraphVariable").value;
+
+      if (variable === "color_relative_fitness") {
+        makeRelativeFitnessSummaryGraph("color");
+        return;
+      }
+
+      if (variable === "speed_relative_fitness") {
+        makeRelativeFitnessSummaryGraph("speed");
+        return;
+      }
+
       const habitatFilter = document.getElementById("summaryHabitatFilter").value;
       const filterPopulationSize = Number(document.getElementById("filterPopulationSize").value);
       const filterAFrequency = Number(document.getElementById("filterAFrequency").value);
