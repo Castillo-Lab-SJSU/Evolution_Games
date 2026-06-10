@@ -222,6 +222,65 @@
 
     <h2>Mutation Counts</h2>
     <canvas id="mutationChart"></canvas>
+    <h2>Class Summary Graphs</h2>
+
+    <label>
+      Summary variable:
+      <select id="summaryGraphVariable">
+        <option value="A">A allele frequency</option>
+        <option value="a">a allele frequency</option>
+        <option value="B">B allele frequency</option>
+        <option value="b">b allele frequency</option>
+        <option value="dark">Dark phenotype frequency</option>
+        <option value="light">Light phenotype frequency</option>
+        <option value="fast">Fast phenotype frequency</option>
+        <option value="medium">Medium phenotype frequency</option>
+        <option value="slow">Slow phenotype frequency</option>
+      </select>
+    </label>
+
+    <label>
+      Habitat filter:
+      <select id="summaryHabitatFilter">
+        <option value="all">All habitats</option>
+        <option value="white_dunes">White dunes</option>
+        <option value="dark_lava">Dark lava</option>
+        <option value="mixed_substrate">Mixed substrate</option>
+      </select>
+    </label>
+    <label>
+      Starting population:
+      <input id="filterPopulationSize" type="number" value="50">
+    </label>
+
+    <label>
+      Starting A frequency:
+      <input id="filterAFrequency" type="number" value="0.5" min="0" max="1" step="0.05">
+    </label>
+
+    <label>
+      Starting B frequency:
+      <input id="filterBFrequency" type="number" value="0.5" min="0" max="1" step="0.05">
+    </label>
+
+    <label>
+      Hunt time:
+      <input id="filterHuntTime" type="number" value="10">
+    </label>
+
+    <label>
+      Speed multiplier:
+      <input id="filterSpeedMultiplier" type="number" value="0.5" step="0.1">
+    </label>
+
+    <label>
+      Mutation rate:
+      <input id="filterMutationRate" type="number" value="0" step="0.00000001">
+    </label>
+    <button onclick="makeClassSummaryGraph()">Create Class Summary Graph</button>
+    <button onclick="downloadClassSummaryGraph()">Download Summary Graph PNG</button>
+
+    <canvas id="classSummaryChart"></canvas>
   </div>
 
   <script>
@@ -237,6 +296,7 @@
     }
     const preySize = 34;
     let populationSize = 50;
+    let lastSelectionData = null;
     let huntTime = 10;
     let initialAFrequency = 0.5;
     let initialBFrequency = 0.5;
@@ -259,6 +319,7 @@
       b_to_B: 0
     };
     const GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycbwDB5wGzu_fsBzuy-3UJIx8L-MMVeFgHKsZyzjjzjeLL92h6HCWNxoGvGMtAJG6tCeRGQ/exec";
+    const CLASS_DATA_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSz6kzJJIBMFp2h2zXKH-0fE_kJiLeiPhhquvmVqCYTt21aIMj3v82AWwI1cI32ijE-DIwTe9imLAS6/pub?output=csv";
     let simulationId = "";
 
     function toggleControls() {
@@ -360,6 +421,7 @@
       updateGameDimensions();
       prey = makeStartingPopulation();
       recordHistory();
+      lastSelectionData = null;
       submitGenerationData();
       drawPrey();
       startTimer();
@@ -649,6 +711,14 @@
         return;
       }
       const survivors = prey.filter(animal => animal.alive);
+      lastSelectionData = {
+        colorGenotypeCounts: countGenotypes("colorGenotype"),
+        colorSurvivorCounts: countSurvivingGenotypes("colorGenotype"),
+        speedGenotypeCounts: countGenotypes("speedGenotype"),
+        speedSurvivorCounts: countSurvivingGenotypes("speedGenotype"),
+        miceSurvived: survivors.length,
+        miceEaten: populationSize - survivors.length
+      };
       if (survivors.length < 2) {
         alert("Too few survivors to reproduce. Restart the game.");
         return;
@@ -833,12 +903,25 @@
       const speedAlleles = alleleFrequencies("speedGenotype");
       const colorPhenotypes = phenotypeFrequencies("colorGenotype");
       const speedPhenotypes = phenotypeFrequencies("speedGenotype");
-      const miceSurvived = prey.filter(x => x.alive).length;
-      const miceEaten = populationSize - miceSurvived;
-      const colorGenotypeCounts = countGenotypes("colorGenotype");
-      const speedGenotypeCounts = countGenotypes("speedGenotype");
-      const colorSurvivorCounts = countSurvivingGenotypes("colorGenotype");
-      const speedSurvivorCounts = countSurvivingGenotypes("speedGenotype");
+      const currentMiceSurvived = prey.filter(x => x.alive).length;
+      const miceSurvived = lastSelectionData ?
+        lastSelectionData.miceSurvived :
+        currentMiceSurvived;
+      const miceEaten = lastSelectionData ?
+        lastSelectionData.miceEaten :
+        populationSize - currentMiceSurvived;
+      const colorGenotypeCounts = lastSelectionData ?
+        lastSelectionData.colorGenotypeCounts :
+        countGenotypes("colorGenotype");
+      const speedGenotypeCounts = lastSelectionData ?
+        lastSelectionData.speedGenotypeCounts :
+        countGenotypes("speedGenotype");
+      const colorSurvivorCounts = lastSelectionData ?
+        lastSelectionData.colorSurvivorCounts :
+        countSurvivingGenotypes("colorGenotype");
+      const speedSurvivorCounts = lastSelectionData ?
+        lastSelectionData.speedSurvivorCounts :
+        countSurvivingGenotypes("speedGenotype");
       fetch(GOOGLE_SHEET_URL, {
         method: "POST",
         mode: "no-cors",
@@ -1010,6 +1093,219 @@
           }
         }
       });
+    }
+    let classSummaryChart = null;
+    async function fetchClassData() {
+      try {
+        const response = await fetch(CLASS_DATA_CSV_URL);
+        const text = await response.text();
+        const lines = text.trim().split("\n");
+        const headers = lines[0].split(",").map(h => h.trim());
+        return lines.slice(1).map(line => {
+          const values = line.split(",");
+          const row = {};
+          headers.forEach((header, i) => {
+            row[header] = values[i];
+          });
+          return row;
+        });
+      } catch (error) {
+        alert("Could not load class data from the published CSV.");
+        console.error(error);
+        return [];
+      }
+    }
+
+    function averageByGeneration(rows, variable) {
+      const grouped = {};
+      rows.forEach(row => {
+        const generation = Number(row.generation);
+        const value = Number(row[variable]);
+        if (Number.isNaN(generation) || Number.isNaN(value)) return;
+        if (!grouped[generation]) {
+          grouped[generation] = [];
+        }
+        grouped[generation].push(value);
+      });
+      const generations = Object.keys(grouped)
+        .map(Number)
+        .sort((a, b) => a - b);
+      const means = [];
+      const lowerCI = [];
+      const upperCI = [];
+      generations.forEach(g => {
+        const values = grouped[g];
+        const n = values.length;
+        const mean = values.reduce((sum, x) => sum + x, 0) / n;
+        const variance = n > 1 ?
+          values.reduce((sum, x) => sum + Math.pow(x - mean, 2), 0) / (n - 1) :
+          0;
+        const sd = Math.sqrt(variance);
+        const se = sd / Math.sqrt(n);
+        const margin = 1.96 * se;
+        means.push(mean);
+        lowerCI.push(mean - margin);
+        upperCI.push(mean + margin);
+      });
+      return {
+        generations,
+        means,
+        lowerCI,
+        upperCI
+      };
+    }
+
+    function groupRowsBySimulation(rows, variable, generations) {
+      const grouped = {};
+      rows.forEach(row => {
+        const simulationId = row.simulationId;
+        const generation = Number(row.generation);
+        const value = Number(row[variable]);
+        if (!simulationId) return;
+        if (Number.isNaN(generation) || Number.isNaN(value)) return;
+        if (!grouped[simulationId]) {
+          grouped[simulationId] = {};
+        }
+        grouped[simulationId][generation] = value;
+      });
+      return Object.keys(grouped).map(simulationId => {
+        return {
+          simulationId,
+          values: generations.map(g => grouped[simulationId][g] ?? null)
+        };
+      });
+    }
+    async function makeClassSummaryGraph() {
+      //alert("Making class graph...");
+      const variable = document.getElementById("summaryGraphVariable").value;
+      const habitatFilter = document.getElementById("summaryHabitatFilter").value;
+      const filterPopulationSize = Number(document.getElementById("filterPopulationSize").value);
+      const filterAFrequency = Number(document.getElementById("filterAFrequency").value);
+      const filterBFrequency = Number(document.getElementById("filterBFrequency").value);
+      const filterHuntTime = Number(document.getElementById("filterHuntTime").value);
+      const filterSpeedMultiplier = Number(document.getElementById("filterSpeedMultiplier").value);
+      const filterMutationRate = Number(document.getElementById("filterMutationRate").value);
+      let rows = await fetchClassData();
+      rows = rows.filter(row => {
+        if (habitatFilter !== "all" && row.habitatType !== habitatFilter) return false;
+        return (
+          Number(row.startPopulationSize) === filterPopulationSize &&
+          Number(row.startAFrequency) === filterAFrequency &&
+          Number(row.startBFrequency) === filterBFrequency &&
+          Number(row.huntTime) === filterHuntTime &&
+          Number(row.speedMultiplier) === filterSpeedMultiplier &&
+          Number(row.mutationRate) === filterMutationRate
+        );
+      });
+      if (rows.length === 0) {
+        alert("No class data matched those starting parameters.");
+        return;
+      }
+      const mean = averageByGeneration(rows, variable);
+      const simulations = groupRowsBySimulation(rows, variable, mean.generations);
+      if (classSummaryChart) {
+        classSummaryChart.destroy();
+      }
+      const datasets = [];
+      simulations.forEach(sim => {
+        datasets.push({
+          label: sim.simulationId,
+          data: sim.values,
+          fill: false,
+          tension: 0.2,
+          borderWidth: 1,
+          pointRadius: 0,
+          borderColor: "rgba(0, 80, 225, 0.25)"
+        });
+      });
+      datasets.push({
+        label: "95% CI lower",
+        data: mean.lowerCI,
+        fill: false,
+        tension: 0.2,
+        borderWidth: 1,
+        pointRadius: 0,
+        borderColor: "rgba(0, 0, 0, 0)"
+      });
+      datasets.push({
+        label: "95% CI upper",
+        data: mean.upperCI,
+        fill: "-1",
+        tension: 0.2,
+        borderWidth: 1,
+        pointRadius: 0,
+        backgroundColor: "rgba(0, 0, 0, 0.25)",
+        borderColor: "rgba(0, 0, 0, 0)"
+      });
+      datasets.push({
+        label: `Mean ${variable}`,
+        data: mean.means,
+        fill: false,
+        tension: 0.2,
+        borderWidth: 5,
+        pointRadius: 3,
+        borderColor: "rgba(0, 0, 0, 1)"
+      });
+      const frequencyVariables = [
+        "A", "a", "B", "b",
+        "dark", "light",
+        "fast", "medium", "slow"
+      ];
+      const yScale = frequencyVariables.includes(variable) ? {
+        min: 0,
+        max: 1,
+        title: {
+          display: true,
+          text: "Frequency"
+        }
+      } : {
+        beginAtZero: true,
+        title: {
+          display: true,
+          text: "Value"
+        }
+      };
+      const ctx = document.getElementById("classSummaryChart");
+      classSummaryChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: mean.generations,
+          datasets
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            title: {
+              display: true,
+              text: `Summary of ${variable} for starting parameters: ${filterAFrequency} A allele frequency, ${filterBFrequency} B allele frequency, population ${filterPopulationSize}, hunt time ${filterHuntTime}, speed multiplier ${filterSpeedMultiplier}, mutation rate ${filterMutationRate}, habitat ${habitatFilter}`
+            },
+            legend: {
+              display: false
+            }
+          },
+          scales: {
+            y: yScale,
+            x: {
+              title: {
+                display: true,
+                text: "Generation"
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function downloadClassSummaryGraph() {
+      if (!classSummaryChart) {
+        alert("Create a class summary graph first.");
+        return;
+      }
+      const canvas = document.getElementById("classSummaryChart");
+      const link = document.createElement("a");
+      link.download = "class-summary-graph.png";
+      link.href = canvas.toDataURL("image/png");
+      link.click();
     }
   </script>
 </body>
