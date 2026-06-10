@@ -404,30 +404,52 @@
       if (habitatType === "dark_lava") {
         return `
         <svg id="duneBackground" viewBox="0 0 700 400" preserveAspectRatio="none">
-          <rect width="700" height="400" fill="#2f2f2f"/>
-          <path d="M -80 80 C 70 25, 210 130, 360 75 S 610 20, 780 95" fill="none" stroke="#4a4038" stroke-width="26" opacity="0.75"/>
-          <path d="M -60 145 C 100 90, 220 185, 380 130 S 620 85, 770 150" fill="none" stroke="#1f1f1f" stroke-width="16" opacity="0.75"/>
-          <path d="M -90 220 C 75 155, 230 250, 395 200 S 620 145, 790 215" fill="none" stroke="#5a5148" stroke-width="22" opacity="0.55"/>
-          <path d="M -80 330 C 100 285, 255 375, 430 325 S 625 270, 790 340" fill="none" stroke="#242424" stroke-width="18" opacity="0.85"/>
+          <rect width="700" height="400" fill="#4b3621"/>
+          <path d="M -80 80 C 70 25, 210 130, 360 75 S 610 20, 780 95" fill="none" stroke="#7a5230" stroke-width="26" opacity="0.75"/>
+          <path d="M -60 145 C 100 90, 220 185, 380 130 S 620 85, 770 150" fill="none" stroke="#3e2818" stroke-width="16" opacity="0.75"/>
+          <path d="M -90 220 C 75 155, 230 250, 395 200 S 620 145, 790 215" fill="none" stroke="#8b5e34" stroke-width="22" opacity="0.55"/>
+          <path d="M -80 330 C 100 285, 255 375, 430 325 S 625 270, 790 340" fill="none" stroke="#523522" stroke-width="18" opacity="0.85"/>
         </svg>`;
       }
       if (habitatType === "mixed_substrate") {
-        return `
-        <svg id="duneBackground" viewBox="0 0 700 400" preserveAspectRatio="none">
-          <defs>
-            <linearGradient id="mixedGradient" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stop-color="#ffffff"/>
-              <stop offset="48%" stop-color="#fcfaf5"/>
-              <stop offset="52%" stop-color="#3a332d"/>
-              <stop offset="100%" stop-color="#2b2b2b"/>
-            </linearGradient>
-          </defs>
-          <rect width="700" height="400" fill="url(#mixedGradient)"/>
-          <path d="M -80 80 C 70 25, 210 130, 360 75 S 610 20, 780 95" fill="none" stroke="#e8e1d4" stroke-width="20" opacity="0.45"/>
-          <path d="M -90 220 C 75 155, 230 250, 395 200 S 620 145, 790 215" fill="none" stroke="#554b42" stroke-width="20" opacity="0.55"/>
-          <path d="M -30 300 C 130 345, 270 285, 430 335 S 620 360, 755 310" fill="none" stroke="#ffffff" stroke-width="6" opacity="0.55"/>
-        </svg>`;
-      }
+  return `
+    <svg id="duneBackground" viewBox="0 0 700 400" preserveAspectRatio="none">
+      <defs>
+        <radialGradient id="swirlLight" cx="30%" cy="35%" r="65%">
+          <stop offset="0%" stop-color="#ffffff"/>
+          <stop offset="55%" stop-color="#f7efe0"/>
+          <stop offset="100%" stop-color="#5b3a24"/>
+        </radialGradient>
+
+        <radialGradient id="swirlDark" cx="75%" cy="70%" r="70%">
+          <stop offset="0%" stop-color="#4b3621"/>
+          <stop offset="55%" stop-color="#8b5e34"/>
+          <stop offset="100%" stop-color="#ffffff"/>
+        </radialGradient>
+      </defs>
+
+      <rect width="700" height="400" fill="#d8c7aa"/>
+
+      <path d="M -120 80 C 40 10, 160 140, 300 75 S 520 20, 820 110"
+            fill="none" stroke="url(#swirlLight)" stroke-width="95" opacity="0.9"/>
+
+      <path d="M -100 210 C 80 130, 210 300, 370 205 S 570 140, 810 250"
+            fill="none" stroke="url(#swirlDark)" stroke-width="105" opacity="0.85"/>
+
+      <path d="M -120 335 C 80 250, 220 420, 390 320 S 610 260, 820 360"
+            fill="none" stroke="#f8f2e6" stroke-width="55" opacity="0.8"/>
+
+      <path d="M 20 -60 C 130 80, 60 190, 190 300 S 420 420, 520 250 S 620 90, 760 40"
+            fill="none" stroke="#5b3a24" stroke-width="70" opacity="0.55"/>
+
+      <path d="M -60 130 C 120 90, 230 170, 360 130 S 560 80, 760 145"
+            fill="none" stroke="#ffffff" stroke-width="10" opacity="0.55"/>
+
+      <path d="M -80 270 C 110 220, 240 320, 390 260 S 590 210, 790 285"
+            fill="none" stroke="#7a5230" stroke-width="12" opacity="0.45"/>
+    </svg>
+  `;
+}
       return `
         <svg id="duneBackground" viewBox="0 0 700 400" preserveAspectRatio="none">
           <defs>
