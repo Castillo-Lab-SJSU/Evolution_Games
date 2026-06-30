@@ -171,8 +171,8 @@
 
     <label>
       Speed multiplier:
-      <input id="speedInput" type="range" value="0.5" min="0.1" max="2" step="0.1" oninput="document.getElementById('speedValueDisplay').textContent = this.value">
-      <span id="speedValueDisplay">0.5</span>
+      <input id="speedInput" type="range" value="1" min="1" max="2" step="0.1" oninput="document.getElementById('speedValueDisplay').textContent = Number(this.value).toFixed(1)">
+      <span id="speedValueDisplay">1.0</span>
     </label>
 
     <label>
@@ -278,7 +278,7 @@
 
     <label>
       Speed multiplier:
-      <input id="filterSpeedMultiplier" type="number" value="0.5" step="0.1">
+      <input id="filterSpeedMultiplier" type="number" value="1" min="1" max="2" step="0.1">
     </label>
 
     <label>
@@ -308,7 +308,7 @@
     let huntTime = 10;
     let initialAFrequency = 0.5;
     let initialBFrequency = 0.5;
-    let speedMultiplier = 0.5;
+    let speedMultiplier = 1;
     let mutationRate = 0;
     let habitatType = "white_dunes";
     let prey = [];
@@ -537,9 +537,13 @@
 
     function speedValue(genotype) {
       const g = normalizeGenotype(genotype);
-      if (g === "BB") return 0.9 * speedMultiplier;
-      if (g === "Bb") return 0.6 * speedMultiplier;
-      return 0.3 * speedMultiplier;
+      const fastAlleles = g.split("").filter(allele => allele === "B").length;
+
+      // Speed multiplier controls the strength of speed differences:
+      // 1.0 = all mice move at the same speed
+      // 2.0 = BB mice move twice as fast as bb mice
+      // Bb mice are intermediate
+      return 1 + (fastAlleles / 2) * (speedMultiplier - 1);
     }
 
     function habitatBackgroundSVG() {
