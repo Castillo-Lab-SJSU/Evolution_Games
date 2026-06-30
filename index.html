@@ -201,9 +201,70 @@
   <button id="classSummaryButton" onclick="showClassSummaryGraphs()">
     Class Summary Graphs
   </button>
-  <button id="downloadRunCSVButton" onclick="downloadCurrentRunSurvivalCSV()" style="display:none;">
-    Download Run CSV
+  <button id="downloadMyDataButton" onclick="toggleDownloadMyDataForm()">
+    Download My Data
   </button>
+
+  <div id="downloadMyDataPanel" style="display:none; border:1px solid black; padding:12px; margin:10px 0; max-width:700px;">
+    <h2>Download My Data</h2>
+    <p>Enter your student ID and the starting parameters, then load your matching simulations.</p>
+
+    <label>
+      Student ID:
+      <input id="downloadStudentId" type="text" placeholder="Enter student ID">
+    </label>
+
+    <label>
+      Starting population:
+      <input id="downloadPopulationSize" type="number" value="50">
+    </label>
+
+    <label>
+      Starting A frequency:
+      <input id="downloadAFrequency" type="number" value="0.5" min="0" max="1" step="0.05">
+    </label>
+
+    <label>
+      Starting B frequency:
+      <input id="downloadBFrequency" type="number" value="0.5" min="0" max="1" step="0.05">
+    </label>
+
+    <label>
+      Hunt time:
+      <input id="downloadHuntTime" type="number" value="10">
+    </label>
+
+    <label>
+      Speed multiplier:
+      <input id="downloadSpeedMultiplier" type="number" value="1" min="1" max="2" step="0.1">
+    </label>
+
+    <label>
+      Mutation rate:
+      <input id="downloadMutationRate" type="number" value="0" step="0.00000001">
+    </label>
+
+    <label>
+      Habitat:
+      <select id="downloadHabitat">
+        <option value="all">All habitats</option>
+        <option value="white_dunes">White dunes</option>
+        <option value="dark_lava">Dark lava</option>
+        <option value="mixed_substrate">Mixed substrate</option>
+      </select>
+    </label>
+
+    <button onclick="loadMySimulationOptions()">Load My Simulations</button>
+
+    <label>
+      Simulation:
+      <select id="downloadSimulationSelect">
+        <option value="">Load simulations first</option>
+      </select>
+    </label>
+
+    <button onclick="downloadSelectedSimulationData()">Download Selected Simulation CSV</button>
+  </div>
   <div id="timerDisplay">Time: 10</div>
   <p id="stats"></p>
 
@@ -372,7 +433,6 @@
       document.getElementById("controls").style.display = "block";
       document.getElementById("graphs").style.display = "none";
       document.getElementById("graphButton").style.display = "none";
-      document.getElementById("downloadRunCSVButton").style.display = "none";
       document.getElementById("timerDisplay").textContent = `Time: ${timeLeft}`;
       document.getElementById("stats").innerHTML = "";
       habitatType = document.getElementById("habitatInput").value;
@@ -427,7 +487,6 @@
       cancelAnimationFrame(animation);
       document.getElementById("graphs").style.display = "none";
       document.getElementById("graphButton").style.display = "inline";
-      document.getElementById("downloadRunCSVButton").style.display = "none";
       charts.forEach(chart => chart.destroy());
       charts = [];
       updateGameDimensions();
@@ -780,9 +839,6 @@
       generation++;
       recordHistory();
       submitGenerationData();
-      if (generation >= 5) {
-        document.getElementById("downloadRunCSVButton").style.display = "inline";
-      }
       if (document.getElementById("graphs").style.display === "block") {
         showGraphs();
       }
@@ -1621,19 +1677,146 @@
       return String(value).replace(".", "");
     }
 
-    function downloadCurrentRunSurvivalCSV() {
-      if (!studentId || currentRunSurvivalRows.length === 0) {
-        alert("Complete at least 5 generations before downloading the CSV.");
+    function toggleDownloadMyDataForm() {
+      const panel = document.getElementById("downloadMyDataPanel");
+      panel.style.display = panel.style.display === "none" ? "block" : "none";
+
+      if (studentId) {
+        document.getElementById("downloadStudentId").value = studentId;
+      }
+    }
+
+    function sameNumber(value1, value2) {
+      return Math.abs(Number(value1) - Number(value2)) < 1e-12;
+    }
+
+    function myDataMatchesFilters(row, filters) {
+      if (String(row.studentId).trim() !== filters.studentId) return false;
+      if (filters.habitat !== "all" && row.habitatType !== filters.habitat) return false;
+
+      return (
+        sameNumber(row.startPopulationSize, filters.populationSize) &&
+        sameNumber(row.startAFrequency, filters.aFrequency) &&
+        sameNumber(row.startBFrequency, filters.bFrequency) &&
+        sameNumber(row.huntTime, filters.huntTime) &&
+        sameNumber(row.speedMultiplier, filters.speedMultiplier) &&
+        sameNumber(row.mutationRate, filters.mutationRate)
+      );
+    }
+
+    function getDownloadFilters() {
+      return {
+        studentId: document.getElementById("downloadStudentId").value.trim(),
+        populationSize: Number(document.getElementById("downloadPopulationSize").value),
+        aFrequency: Number(document.getElementById("downloadAFrequency").value),
+        bFrequency: Number(document.getElementById("downloadBFrequency").value),
+        huntTime: Number(document.getElementById("downloadHuntTime").value),
+        speedMultiplier: Number(document.getElementById("downloadSpeedMultiplier").value),
+        mutationRate: Number(document.getElementById("downloadMutationRate").value),
+        habitat: document.getElementById("downloadHabitat").value
+      };
+    }
+
+    async function loadMySimulationOptions() {
+      const filters = getDownloadFilters();
+
+      if (!filters.studentId) {
+        alert("Enter your student ID first.");
         return;
       }
 
-      if (generation < 5) {
-        alert("Complete at least 5 generations before downloading the CSV.");
+      const rows = await fetchClassData();
+      const matches = rows.filter(row => myDataMatchesFilters(row, filters));
+      const simulations = [...new Set(matches.map(row => row.simulationId).filter(Boolean))]
+        .sort();
+
+      const select = document.getElementById("downloadSimulationSelect");
+      select.innerHTML = "";
+
+      if (simulations.length === 0) {
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = "No matching simulations found";
+        select.appendChild(option);
+        alert("No simulations matched that student ID and starting parameters.");
+        return;
+      }
+
+      simulations.forEach(sim => {
+        const simRows = matches.filter(row => row.simulationId === sim);
+        const generations = simRows
+          .map(row => Number(row.generation))
+          .filter(g => !Number.isNaN(g));
+        const minGeneration = Math.min(...generations);
+        const maxGeneration = Math.max(...generations);
+
+        const option = document.createElement("option");
+        option.value = sim;
+        option.textContent = `${sim} (${simRows.length} rows, generations ${minGeneration}-${maxGeneration})`;
+        select.appendChild(option);
+      });
+    }
+
+    function csvEscape(value) {
+      if (value === null || value === undefined) return "";
+      const text = String(value);
+      if (text.includes(",") || text.includes('"') || text.includes("\n")) {
+        return '"' + text.replace(/"/g, '""') + '"';
+      }
+      return text;
+    }
+
+    async function downloadSelectedSimulationData() {
+      const filters = getDownloadFilters();
+      const selectedSimulation = document.getElementById("downloadSimulationSelect").value;
+
+      if (!filters.studentId) {
+        alert("Enter your student ID first.");
+        return;
+      }
+
+      if (!selectedSimulation) {
+        alert("Load and select a simulation first.");
+        return;
+      }
+
+      const rows = await fetchClassData();
+      const matches = rows
+        .filter(row => myDataMatchesFilters(row, filters))
+        .filter(row => row.simulationId === selectedSimulation)
+        .sort((a, b) => Number(a.generation) - Number(b.generation));
+
+      if (matches.length === 0) {
+        alert("No data found for that simulation.");
         return;
       }
 
       const headers = [
+        "studentId",
+        "simulationId",
         "generation",
+        "startPopulationSize",
+        "startAFrequency",
+        "startBFrequency",
+        "huntTime",
+        "speedMultiplier",
+        "mutationRate",
+        "habitatType",
+        "A",
+        "a",
+        "B",
+        "b",
+        "dark",
+        "light",
+        "fast",
+        "medium",
+        "slow",
+        "miceEaten",
+        "miceSurvived",
+        "A_to_a",
+        "a_to_A",
+        "B_to_b",
+        "b_to_B",
         "AA_count",
         "Aa_count",
         "aa_count",
@@ -1645,23 +1828,23 @@
         "bb_count",
         "BB_survived",
         "Bb_survived",
-        "bb_survived"
+        "bb_survived",
+        "timestamp"
       ];
 
       const csv = [
         headers.join(","),
-        ...currentRunSurvivalRows.map(row =>
-          headers.map(header => row[header]).join(",")
-        )
+        ...matches.map(row => headers.map(header => csvEscape(row[header])).join(","))
       ].join("\n");
 
       const filename =
-        `${studentId}_` +
-        `${populationSize}pop_` +
-        `${formatNumberForFilename(initialAFrequency)}Af_` +
-        `${formatNumberForFilename(initialBFrequency)}Bf_` +
-        `${formatNumberForFilename(speedMultiplier)}Speed_` +
-        `${mutationRate}mutation.csv`;
+        `${filters.studentId}_` +
+        `${filters.populationSize}pop_` +
+        `${formatNumberForFilename(filters.aFrequency)}Af_` +
+        `${formatNumberForFilename(filters.bFrequency)}Bf_` +
+        `${formatNumberForFilename(filters.speedMultiplier)}Speed_` +
+        `${filters.mutationRate}mutation_` +
+        `${selectedSimulation}.csv`;
 
       const blob = new Blob([csv], { type: "text/csv" });
       const url = URL.createObjectURL(blob);
