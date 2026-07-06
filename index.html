@@ -229,6 +229,10 @@
       Student ID:
       <input id="myStatsStudentId" type="text" placeholder="Enter student ID">
     </label>
+    <label>
+      Hunt time:
+      <input id="myStatsHuntTime" type="number" value="10" min="3" max="60">
+    </label>
     <button onclick="makeMyStats()">Show My Stats</button>
     <div id="myStatsText"></div>
     <canvas id="myStatsChart"></canvas>
@@ -1051,7 +1055,7 @@
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          studentId,
+          studentId: String(studentId),
           simulationId,
           generation,
           startPopulationSize: populationSize,
@@ -1227,6 +1231,39 @@
     }
     let classSummaryChart = null;
     let myStatsChart = null;
+
+    const myStatsVerticalLinesPlugin = {
+      id: "myStatsVerticalLinesPlugin",
+      afterDatasetsDraw(chart) {
+        const pluginOptions = chart.options.plugins.myStatsLines;
+        if (!pluginOptions) return;
+
+        const { average, highScore } = pluginOptions;
+        const { ctx, chartArea, scales } = chart;
+        const xScale = scales.x;
+        const yScale = scales.y;
+
+        function drawVerticalLine(value, color) {
+          if (value === null || value === undefined || Number.isNaN(Number(value))) return;
+
+          const x = xScale.getPixelForValue(value);
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(x, chartArea.top);
+          ctx.lineTo(x, chartArea.bottom);
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = color;
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        drawVerticalLine(average, "blue");
+        drawVerticalLine(highScore, "red");
+      }
+    };
+
+    Chart.register(myStatsVerticalLinesPlugin);
     async function fetchClassData() {
       try {
         const response = await fetch(CLASS_DATA_CSV_URL);
@@ -1896,6 +1933,10 @@
         .filter(row => Number(row.generation) > 0);
     }
 
+    function rowsWithHuntTime(rows, selectedHuntTime) {
+      return rows.filter(row => sameNumber(row.huntTime, selectedHuntTime));
+    }
+
     function topPercentForScore(score, scores) {
       const cleanScores = scores
         .map(Number)
@@ -1923,7 +1964,7 @@
       box.style.display = "block";
       box.innerHTML = `You ate ${miceEaten} mice!<br>Calculating your ranking...`;
 
-      const rows = completedRunRows(await fetchClassData());
+      const rows = rowsWithHuntTime(completedRunRows(await fetchClassData()), huntTime);
       const allScores = rows.map(row => Number(row.miceEaten));
       const topPercent = topPercentForScore(miceEaten, allScores);
 
@@ -1942,7 +1983,7 @@
 
       box.innerHTML =
         `You ate ${miceEaten} mice!<br>` +
-        `🏆 That's in the top ${topPercent}% of all simulation runs!` +
+        `🏆 That's in the top ${topPercent}% of all simulation runs with the same hunt time!` +
         predatorAchievementText(topPercent, isPersonalBest);
     }
 
@@ -1950,6 +1991,7 @@
       const panel = document.getElementById("myStatsPanel");
       panel.style.display = panel.style.display === "none" ? "block" : "none";
       if (studentId) document.getElementById("myStatsStudentId").value = studentId;
+      document.getElementById("myStatsHuntTime").value = huntTime || Number(document.getElementById("huntTimeInput").value);
     }
 
     function makeHistogramCounts(scores) {
@@ -1963,12 +2005,17 @@
 
     async function makeMyStats() {
       const id = document.getElementById("myStatsStudentId").value.trim();
+      const selectedHuntTime = Number(document.getElementById("myStatsHuntTime").value);
       if (!id) {
         alert("Enter your student ID first.");
         return;
       }
+      if (Number.isNaN(selectedHuntTime)) {
+        alert("Enter a valid hunt time.");
+        return;
+      }
 
-      const rows = completedRunRows(await fetchClassData());
+      const rows = rowsWithHuntTime(completedRunRows(await fetchClassData()), selectedHuntTime);
       const allScores = rows
         .map(row => Number(row.miceEaten))
         .filter(x => !Number.isNaN(x));
@@ -1979,12 +2026,12 @@
         .filter(x => !Number.isNaN(x));
 
       if (allScores.length === 0) {
-        alert("No class score data found yet.");
+        alert("No class score data found for that hunt time yet.");
         return;
       }
 
       if (myScores.length === 0) {
-        alert("No scores found for that student ID.");
+        alert("No scores found for that student ID at that hunt time.");
         return;
       }
 
@@ -1994,10 +2041,11 @@
       const averageTopPercent = topPercentForScore(average, allScores);
 
       document.getElementById("myStatsText").innerHTML = `
+        <p><strong>Hunt time:</strong> ${selectedHuntTime} seconds</p>
         <p><strong>Best round:</strong> ${best} mice eaten</p>
         <p><strong>Average:</strong> ${average.toFixed(2)} mice eaten</p>
-        <p><strong>Best round rank:</strong> top ${bestTopPercent}% of all simulation runs</p>
-        <p><strong>Average rank:</strong> top ${averageTopPercent}% of all simulation runs</p>
+        <p><strong>Best round rank:</strong> top ${bestTopPercent}% of all simulation runs with this hunt time</p>
+        <p><strong>Average rank:</strong> top ${averageTopPercent}% of all simulation runs with this hunt time</p>
       `;
 
       const counts = makeHistogramCounts(allScores);
@@ -2019,22 +2067,20 @@
             {
               type: "line",
               label: "My average",
-              data: labels.map(x => x === Math.round(average) ? Math.max(...counts) : null),
-              borderColor: "rgba(0,80,225,1)",
-              backgroundColor: "rgba(0,80,225,1)",
+              data: [],
+              borderColor: "blue",
+              backgroundColor: "blue",
               borderWidth: 4,
-              pointRadius: 0,
-              spanGaps: false
+              pointRadius: 0
             },
             {
               type: "line",
-              label: "My high score",
-              data: labels.map(x => x === best ? Math.max(...counts) : null),
-              borderColor: "rgba(220,0,0,1)",
-              backgroundColor: "rgba(220,0,0,1)",
+              label: "My best",
+              data: [],
+              borderColor: "red",
+              backgroundColor: "red",
               borderWidth: 4,
-              pointRadius: 0,
-              spanGaps: false
+              pointRadius: 0
             }
           ]
         },
@@ -2043,11 +2089,24 @@
           plugins: {
             title: {
               display: true,
-              text: "Mice eaten across all simulation runs"
+              text: `Mice eaten across all simulation runs with ${selectedHuntTime}-second hunt time`
+            },
+            legend: {
+              display: true
+            },
+            myStatsLines: {
+              average,
+              highScore: best
             }
           },
           scales: {
             x: {
+              type: "linear",
+              min: 0,
+              max: labels.length - 1,
+              ticks: {
+                stepSize: 1
+              },
               title: {
                 display: true,
                 text: "Mice eaten"
