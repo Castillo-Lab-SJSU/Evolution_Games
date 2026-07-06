@@ -114,6 +114,19 @@
       margin: 20px 0;
     }
 
+    #predatorResult, #myStatsPanel {
+      border: 1px solid black;
+      padding: 12px;
+      margin: 10px 0;
+      max-width: 700px;
+      background: #fffdf7;
+    }
+
+    #predatorResult {
+      font-size: 22px;
+      font-weight: bold;
+    }
+
     @media (max-width: 900px) {
       body {
         font-size: 16px;
@@ -204,6 +217,22 @@
   <button id="downloadMyDataButton" onclick="toggleDownloadMyDataForm()">
     Download My Data
   </button>
+  <button id="myStatsButton" onclick="showMyStats()">
+    My Stats
+  </button>
+
+  <div id="predatorResult" style="display:none;"></div>
+
+  <div id="myStatsPanel" style="display:none;">
+    <h2>My Predator Stats</h2>
+    <label>
+      Student ID:
+      <input id="myStatsStudentId" type="text" placeholder="Enter student ID">
+    </label>
+    <button onclick="makeMyStats()">Show My Stats</button>
+    <div id="myStatsText"></div>
+    <canvas id="myStatsChart"></canvas>
+  </div>
 
   <div id="downloadMyDataPanel" style="display:none; border:1px solid black; padding:12px; margin:10px 0; max-width:700px;">
     <h2>Download My Data</h2>
@@ -795,6 +824,8 @@
         miceEaten: populationSize - survivors.length
       };
 
+      showPredatorRoundResult(lastSelectionData.miceEaten);
+
       currentRunSurvivalRows.push({
         generation,
         AA_count: lastSelectionData.colorGenotypeCounts.AA || 0,
@@ -1195,6 +1226,7 @@
       });
     }
     let classSummaryChart = null;
+    let myStatsChart = null;
     async function fetchClassData() {
       try {
         const response = await fetch(CLASS_DATA_CSV_URL);
@@ -1855,6 +1887,182 @@
       link.click();
 
       URL.revokeObjectURL(url);
+    }
+
+
+    function completedRunRows(rows) {
+      return rows
+        .filter(row => row.simulationId && !Number.isNaN(Number(row.miceEaten)))
+        .filter(row => Number(row.generation) > 0);
+    }
+
+    function topPercentForScore(score, scores) {
+      const cleanScores = scores
+        .map(Number)
+        .filter(x => !Number.isNaN(x));
+
+      if (cleanScores.length === 0) return null;
+
+      const betterThan = cleanScores.filter(x => x <= score).length;
+      const percentile = 100 * betterThan / cleanScores.length;
+      return Math.max(1, Math.round(100 - percentile));
+    }
+
+    function predatorAchievementText(topPercent, isPersonalBest) {
+      const badges = [];
+
+      if (isPersonalBest) badges.push("🎉 New personal best!");
+      if (topPercent !== null && topPercent <= 1) badges.push("👑 Top predator!");
+      else if (topPercent !== null && topPercent <= 10) badges.push("🌟 Elite predator!");
+
+      return badges.length ? `<br>${badges.join("<br>")}` : "";
+    }
+
+    async function showPredatorRoundResult(miceEaten) {
+      const box = document.getElementById("predatorResult");
+      box.style.display = "block";
+      box.innerHTML = `You ate ${miceEaten} mice!<br>Calculating your ranking...`;
+
+      const rows = completedRunRows(await fetchClassData());
+      const allScores = rows.map(row => Number(row.miceEaten));
+      const topPercent = topPercentForScore(miceEaten, allScores);
+
+      const myScores = rows
+        .filter(row => String(row.studentId).trim() === studentId)
+        .map(row => Number(row.miceEaten))
+        .filter(x => !Number.isNaN(x));
+
+      const previousBest = myScores.length ? Math.max(...myScores) : -Infinity;
+      const isPersonalBest = miceEaten >= previousBest;
+
+      if (topPercent === null) {
+        box.innerHTML = `You ate ${miceEaten} mice!`;
+        return;
+      }
+
+      box.innerHTML =
+        `You ate ${miceEaten} mice!<br>` +
+        `🏆 That's in the top ${topPercent}% of all simulation runs!` +
+        predatorAchievementText(topPercent, isPersonalBest);
+    }
+
+    function showMyStats() {
+      const panel = document.getElementById("myStatsPanel");
+      panel.style.display = panel.style.display === "none" ? "block" : "none";
+      if (studentId) document.getElementById("myStatsStudentId").value = studentId;
+    }
+
+    function makeHistogramCounts(scores) {
+      const maxScore = Math.max(...scores, 0);
+      const bins = Array(maxScore + 1).fill(0);
+      scores.forEach(score => {
+        if (!Number.isNaN(score) && score >= 0) bins[score]++;
+      });
+      return bins;
+    }
+
+    async function makeMyStats() {
+      const id = document.getElementById("myStatsStudentId").value.trim();
+      if (!id) {
+        alert("Enter your student ID first.");
+        return;
+      }
+
+      const rows = completedRunRows(await fetchClassData());
+      const allScores = rows
+        .map(row => Number(row.miceEaten))
+        .filter(x => !Number.isNaN(x));
+
+      const myScores = rows
+        .filter(row => String(row.studentId).trim() === id)
+        .map(row => Number(row.miceEaten))
+        .filter(x => !Number.isNaN(x));
+
+      if (allScores.length === 0) {
+        alert("No class score data found yet.");
+        return;
+      }
+
+      if (myScores.length === 0) {
+        alert("No scores found for that student ID.");
+        return;
+      }
+
+      const best = Math.max(...myScores);
+      const average = myScores.reduce((sum, x) => sum + x, 0) / myScores.length;
+      const bestTopPercent = topPercentForScore(best, allScores);
+      const averageTopPercent = topPercentForScore(average, allScores);
+
+      document.getElementById("myStatsText").innerHTML = `
+        <p><strong>Best round:</strong> ${best} mice eaten</p>
+        <p><strong>Average:</strong> ${average.toFixed(2)} mice eaten</p>
+        <p><strong>Best round rank:</strong> top ${bestTopPercent}% of all simulation runs</p>
+        <p><strong>Average rank:</strong> top ${averageTopPercent}% of all simulation runs</p>
+      `;
+
+      const counts = makeHistogramCounts(allScores);
+      const labels = counts.map((_, i) => i);
+
+      if (myStatsChart) myStatsChart.destroy();
+
+      const ctx = document.getElementById("myStatsChart");
+      myStatsChart = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "All simulation runs",
+              data: counts,
+              backgroundColor: "rgba(0,0,0,0.25)"
+            },
+            {
+              type: "line",
+              label: "My average",
+              data: labels.map(x => x === Math.round(average) ? Math.max(...counts) : null),
+              borderColor: "rgba(0,80,225,1)",
+              backgroundColor: "rgba(0,80,225,1)",
+              borderWidth: 4,
+              pointRadius: 0,
+              spanGaps: false
+            },
+            {
+              type: "line",
+              label: "My high score",
+              data: labels.map(x => x === best ? Math.max(...counts) : null),
+              borderColor: "rgba(220,0,0,1)",
+              backgroundColor: "rgba(220,0,0,1)",
+              borderWidth: 4,
+              pointRadius: 0,
+              spanGaps: false
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            title: {
+              display: true,
+              text: "Mice eaten across all simulation runs"
+            }
+          },
+          scales: {
+            x: {
+              title: {
+                display: true,
+                text: "Mice eaten"
+              }
+            },
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: "Number of simulation runs"
+              }
+            }
+          }
+        }
+      });
     }
 
     function downloadClassSummaryGraph() {
