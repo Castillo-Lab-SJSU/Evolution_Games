@@ -109,6 +109,70 @@
       cursor: pointer;
     }
 
+    #exitFullscreenButton {
+      display: none;
+      position: absolute;
+      top: 68%;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 11;
+      background: white;
+      color: black;
+      border: 2px solid black;
+      padding: 10px 18px;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    #fullscreenTimer {
+      display: none;
+      position: absolute;
+      top: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 12;
+      background: rgba(255,255,255,0.88);
+      border: 2px solid black;
+      padding: 8px 16px;
+      font-size: 32px;
+      font-weight: bold;
+      pointer-events: none;
+    }
+
+    #fullscreenPredatorResult {
+      display: none;
+      position: absolute;
+      top: 30%;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 12;
+      width: min(80vw, 650px);
+      box-sizing: border-box;
+      background: rgba(255,255,255,0.94);
+      border: 2px solid black;
+      padding: 12px;
+      text-align: center;
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+    #game:fullscreen,
+    #game:-webkit-full-screen {
+      width: 100vw;
+      height: 100vh;
+      max-width: none;
+      aspect-ratio: auto;
+      border: none;
+      margin: 0;
+      background: #faf8f2;
+    }
+
+    #game:fullscreen #fullscreenTimer,
+    #game:-webkit-full-screen #fullscreenTimer {
+      display: block;
+    }
+
     canvas {
       max-width: 700px;
       margin: 20px 0;
@@ -396,6 +460,27 @@
       gameWidth = game.clientWidth;
       gameHeight = game.clientHeight;
     }
+
+    function enterGameFullscreen() {
+      if (game.requestFullscreen) {
+        game.requestFullscreen().catch(error => console.warn("Fullscreen request failed:", error));
+      } else if (game.webkitRequestFullscreen) {
+        game.webkitRequestFullscreen();
+      }
+    }
+
+    function exitGameFullscreen() {
+      if (document.fullscreenElement && document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if (document.webkitFullscreenElement && document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      }
+    }
+
+    function updateFullscreenTimer(text) {
+      const fullscreenTimer = document.getElementById("fullscreenTimer");
+      if (fullscreenTimer) fullscreenTimer.textContent = text;
+    }
     const preySize = 34;
     let populationSize = 50;
     let lastSelectionData = null;
@@ -493,13 +578,14 @@
 
     function startGame() {
       studentId = document.getElementById("studentIdInput").value.trim();
-      const startButton = document.getElementById("startOverlayButton");
-      if (startButton) {
-        startButton.remove();
-      }
       if (studentId === "") {
         alert("Please enter your student ID before starting.");
         return;
+      }
+      enterGameFullscreen();
+      const startButton = document.getElementById("startOverlayButton");
+      if (startButton) {
+        startButton.remove();
       }
       populationSize = Number(document.getElementById("popSizeInput").value);
       huntTime = Number(document.getElementById("huntTimeInput").value);
@@ -712,15 +798,21 @@
     function drawPrey() {
       game.innerHTML = `
         ${habitatBackgroundSVG()}
+        <div id="fullscreenTimer">Time: ${timeLeft}</div>
+        <div id="fullscreenPredatorResult"></div>
 
         <div id="timeUpOverlay">TIME'S UP!</div>
 
         <button id="nextGenOverlayButton" onclick="nextGeneration()">
           Next Generation
         </button>
+        <button id="exitFullscreenButton" onclick="exitGameFullscreen()">
+          Exit Full Screen
+        </button>
       `;
       document.getElementById("timeUpOverlay").style.display = "none";
       document.getElementById("nextGenOverlayButton").style.display = "none";
+      document.getElementById("exitFullscreenButton").style.display = "none";
       prey.forEach(animal => {
         if (!animal.alive) return;
         const dot = document.createElement("div");
@@ -796,15 +888,21 @@
       timeLeft = huntTime;
       huntingActive = true;
       timerDisplay.textContent = `Time: ${timeLeft}`;
+      updateFullscreenTimer(`Time: ${timeLeft}`);
       timer = setInterval(() => {
         timeLeft--;
         timerDisplay.textContent = `Time: ${timeLeft}`;
+        updateFullscreenTimer(`Time: ${timeLeft}`);
         if (timeLeft <= 0) {
           clearInterval(timer);
           huntingActive = false;
+          const miceEaten = populationSize - prey.filter(animal => animal.alive).length;
+          showPredatorRoundResult(miceEaten);
           timerDisplay.textContent = "Time's up! Click Next Generation";
+          updateFullscreenTimer("Time's up!");
           document.getElementById("timeUpOverlay").style.display = "flex";
           document.getElementById("nextGenOverlayButton").style.display = "block";
+          document.getElementById("exitFullscreenButton").style.display = "block";
         }
       }, 1000);
     }
@@ -828,7 +926,6 @@
         miceEaten: populationSize - survivors.length
       };
 
-      showPredatorRoundResult(lastSelectionData.miceEaten);
 
       currentRunSurvivalRows.push({
         generation,
@@ -1145,6 +1242,14 @@
         ["b → B", history.map(h => h.mutations?.b_to_B || 0)]
       ]));
     }
+    document.addEventListener("fullscreenchange", () => {
+      updateGameDimensions();
+    });
+
+    document.addEventListener("webkitfullscreenchange", () => {
+      updateGameDimensions();
+    });
+
     window.addEventListener("resize", () => {
       updateGameDimensions();
     });
@@ -1961,8 +2066,13 @@
 
     async function showPredatorRoundResult(miceEaten) {
       const box = document.getElementById("predatorResult");
+      const fullscreenBox = document.getElementById("fullscreenPredatorResult");
       box.style.display = "block";
       box.innerHTML = `You ate ${miceEaten} mice!<br>Calculating your ranking...`;
+      if (fullscreenBox) {
+        fullscreenBox.style.display = "block";
+        fullscreenBox.innerHTML = box.innerHTML;
+      }
 
       const rows = rowsWithHuntTime(completedRunRows(await fetchClassData()), huntTime);
       const allScores = rows.map(row => Number(row.miceEaten));
@@ -1978,6 +2088,7 @@
 
       if (topPercent === null) {
         box.innerHTML = `You ate ${miceEaten} mice!`;
+        if (fullscreenBox) fullscreenBox.innerHTML = box.innerHTML;
         return;
       }
 
@@ -1985,6 +2096,7 @@
         `You ate ${miceEaten} mice!<br>` +
         `🏆 That's in the top ${topPercent}% of all simulation runs with the same hunt time!` +
         predatorAchievementText(topPercent, isPersonalBest);
+      if (fullscreenBox) fullscreenBox.innerHTML = box.innerHTML;
     }
 
     function showMyStats() {
