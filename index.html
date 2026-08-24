@@ -158,9 +158,11 @@
     }
 
     #game:fullscreen,
-    #game:-webkit-full-screen {
+    #game:-webkit-full-screen,
+    #game.game-fullscreen-fallback {
       width: 100vw;
       height: 100vh;
+      height: 100dvh;
       max-width: none;
       aspect-ratio: auto;
       border: none;
@@ -168,8 +170,15 @@
       background: #faf8f2;
     }
 
+    #game.game-fullscreen-fallback {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+    }
+
     #game:fullscreen #fullscreenTimer,
-    #game:-webkit-full-screen #fullscreenTimer {
+    #game:-webkit-full-screen #fullscreenTimer,
+    #game.game-fullscreen-fallback #fullscreenTimer {
       display: block;
     }
 
@@ -461,20 +470,43 @@
       gameHeight = game.clientHeight;
     }
 
+    let fullscreenGameActive = false;
+
     function enterGameFullscreen() {
-      if (game.requestFullscreen) {
-        game.requestFullscreen().catch(error => console.warn("Fullscreen request failed:", error));
-      } else if (game.webkitRequestFullscreen) {
-        game.webkitRequestFullscreen();
+      fullscreenGameActive = true;
+
+      // CSS fallback works on phones/browsers that do not support native
+      // fullscreen for ordinary page elements.
+      game.classList.add("game-fullscreen-fallback");
+      updateGameDimensions();
+
+      // Native fullscreen when available. This must be called from a user click.
+      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        if (game.requestFullscreen) {
+          game.requestFullscreen().catch(error => {
+            console.warn("Native fullscreen request failed; using full-screen layout instead:", error);
+          });
+        } else if (game.webkitRequestFullscreen) {
+          try {
+            game.webkitRequestFullscreen();
+          } catch (error) {
+            console.warn("Native fullscreen request failed; using full-screen layout instead:", error);
+          }
+        }
       }
     }
 
     function exitGameFullscreen() {
+      fullscreenGameActive = false;
+      game.classList.remove("game-fullscreen-fallback");
+
       if (document.fullscreenElement && document.exitFullscreen) {
-        document.exitFullscreen();
+        document.exitFullscreen().catch(() => {});
       } else if (document.webkitFullscreenElement && document.webkitExitFullscreen) {
         document.webkitExitFullscreen();
       }
+
+      setTimeout(updateGameDimensions, 50);
     }
 
     function updateFullscreenTimer(text) {
@@ -916,6 +948,14 @@
         alert("Wait until the timer finishes.");
         return;
       }
+
+      // Next Generation is a fresh user click, so if native fullscreen was
+      // dropped by the browser we can request it again here. The CSS fallback
+      // keeps the game full-screen on mobile either way.
+      if (fullscreenGameActive) {
+        enterGameFullscreen();
+      }
+
       const survivors = prey.filter(animal => animal.alive);
       lastSelectionData = {
         colorGenotypeCounts: countGenotypes("colorGenotype"),
@@ -1242,13 +1282,18 @@
         ["b → B", history.map(h => h.mutations?.b_to_B || 0)]
       ]));
     }
-    document.addEventListener("fullscreenchange", () => {
-      updateGameDimensions();
-    });
+    function handleFullscreenChange() {
+      // Some browsers can leave native fullscreen after alerts, navigation UI
+      // changes, or other interruptions. Keep the CSS full-screen layout active
+      // until the player explicitly presses Exit Full Screen.
+      if (fullscreenGameActive) {
+        game.classList.add("game-fullscreen-fallback");
+      }
+      setTimeout(updateGameDimensions, 50);
+    }
 
-    document.addEventListener("webkitfullscreenchange", () => {
-      updateGameDimensions();
-    });
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
 
     window.addEventListener("resize", () => {
       updateGameDimensions();
