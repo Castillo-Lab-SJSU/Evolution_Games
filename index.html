@@ -143,16 +143,17 @@
     #fullscreenPredatorResult {
   display: none;
   position: absolute;
-  top: 8%;
+  top: 6%;
   left: 50%;
   transform: translateX(-50%);
   z-index: 12;
   background: rgba(255, 255, 255, 0.92);
   border: 2px solid black;
-  padding: 12px 20px;
-  max-width: 80%;
+  padding: 7px 12px;
+  max-width: 65%;
   text-align: center;
-  font-size: 22px;
+  font-size: 16px;
+  line-height: 1.25;
   font-weight: bold;
 }
 
@@ -948,12 +949,11 @@
         return;
       }
 
-      // Next Generation is a fresh user click, so if native fullscreen was
-      // dropped by the browser we can request it again here. The CSS fallback
-      // keeps the game full-screen on mobile either way.
-      if (fullscreenGameActive) {
-        enterGameFullscreen();
-      }
+      // Every Next Generation click returns the playing field to full-screen
+      // mode. Because this runs directly from the button click, browsers that
+      // support native fullscreen can grant the request again. Phones that do
+      // not support element fullscreen still use the CSS full-screen fallback.
+      enterGameFullscreen();
 
       const survivors = prey.filter(animal => animal.alive);
       lastSelectionData = {
